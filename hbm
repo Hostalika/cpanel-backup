@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  hbm - Hostalika Backup Manager
-#  Version: 2.4.2
+#  Version: 2.4.3
 #  Usage: hbm <command> [options]
 # =============================================================================
 
@@ -369,7 +369,7 @@ cmd_list() {
 }
 
 cmd_clean() {
-    local temp_dir count sz
+    local temp_dir count sz d
     temp_dir="/backup/temp_cpanel"
     count=0
     echo "Checking for stale temp folders..."
@@ -377,15 +377,15 @@ cmd_clean() {
         [ -d "$d" ] || continue
         sz=$(du -sh "$d" | cut -f1)
         rm -rf "$d"
-        echo -e "  ${YELLOW}[REMOVED]${NC} $(basename $d) ($sz)"
-        ((count++))
+        echo -e "  ${YELLOW}[REMOVED]${NC} $(basename "$d") ($sz)"
+        count=$((count + 1))
     done
-    if [ $count -eq 0 ]; then
+    if [ "$count" -eq 0 ]; then
         echo -e "  ${GREEN}No stale folders found.${NC}"
     else
         echo -e "\n  ${GREEN}Removed $count folder(s).${NC}"
     fi
-    echo "Current usage: $(du -sh ${temp_dir} 2>/dev/null | cut -f1)"
+    echo "Current usage: $(du -sh "${temp_dir}" 2>/dev/null | cut -f1)"
 }
 
 cmd_backup() {
