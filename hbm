@@ -22,22 +22,18 @@ ok()   { echo -e "  ${GREEN}[OK]${NC}    $1"; }
 fail() { echo -e "  ${RED}[FAIL]${NC}  $1"; }
 warn() { echo -e "  ${YELLOW}[WARN]${NC}  $1"; }
 
-# Extract value from bash variable assignment: VAR="value" -> value
 get_sh_val() {
     grep "^${1}=" "$SCRIPT" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'"
 }
 
-# Extract value from python variable assignment: VAR     = "value" -> value
 get_py_val() {
     grep "^${1} " "$BOT" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" | tr -d ' '
 }
 
-# Set value in bash script
 set_sh_val() {
     sed -i "s|^${1}=.*|${1}=\"${2}\"|" "$SCRIPT"
 }
 
-# Set value in python bot script
 set_py_val() {
     local key="$1"
     local val="$2"
@@ -66,6 +62,7 @@ cmd_help() {
     echo "Backup:"
     echo "  hbm backup               Start a full backup now"
     echo "  hbm backup <user>        Backup a single account"
+    echo "  hbm stop                 Stop running backup"
     echo "  hbm restore <user>       Restore latest backup"
     echo "  hbm restore <user> <date>  Restore from specific date"
     echo ""
@@ -76,7 +73,6 @@ cmd_help() {
     echo "  hbm disk                 Show disk usage"
     echo ""
     echo "Maintenance:"
-    echo "  hbm stop                 Stop running backup"
     echo "  hbm clean                Remove stale temp folders"
     echo "  hbm restart              Restart Telegram bot"
     echo ""
@@ -85,7 +81,9 @@ cmd_help() {
 cmd_version() {
     local ver remote
     ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
-    remote=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null | tr -d '[:space:]')
+    remote=$(curl -fsSL "${REPO_API}/VERSION" 2>/dev/null \
+        | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode().strip())" 2>/dev/null)
+    [ -z "$remote" ] && remote=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null | tr -d '[:space:]')
     echo "Installed : v${ver}"
     echo "Latest    : v${remote}"
     if [ "$ver" != "$remote" ]; then
@@ -99,7 +97,7 @@ cmd_status() {
     local ver bot_status cron_line rhost ruser keep last_run last_status disk
     ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
     bot_status=$(systemctl is-active cpanel-backup-bot 2>/dev/null || echo "not installed")
-    cron_line=$(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}' || echo "not set")
+    cron_line=$(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}')
     rhost=$(get_sh_val REMOTE_HOST)
     ruser=$(get_sh_val REMOTE_USER)
     keep=$(grep '^KEEP_BACKUPS=' "$SCRIPT" 2>/dev/null | cut -d'=' -f2)
@@ -176,18 +174,16 @@ cmd_config() {
     if [ -n "$v" ]; then
         set_sh_val REMOTE_HOST "$v"
         set_py_val REMOTE_HOST "$v"
-        cur_host="$v"
     fi
 
     read -p "  Backup server SSH user [${cur_user}]: " v
     if [ -n "$v" ]; then
         set_sh_val REMOTE_USER "$v"
         set_py_val REMOTE_USER "$v"
-        cur_user="$v"
     fi
 
     read -p "  Backup server SSH port [${cur_port}]: " v
-    [ -n "$v" ] && set_sh_val REMOTE_PORT "$v" && cur_port="$v"
+    [ -n "$v" ] && set_sh_val REMOTE_PORT "$v"
 
     read -p "  Keep N backups         [${cur_keep}]: " v
     [ -n "$v" ] && sed -i "s|^KEEP_BACKUPS=.*|KEEP_BACKUPS=${v}|" "$SCRIPT"
@@ -286,18 +282,17 @@ download_file() {
 cmd_update() {
     local remote_ver local_ver
     echo "[hbm] Checking for updates..."
-    # Use GitHub API directly to bypass CDN cache
-    remote_ver=$(curl -fsSL "https://api.github.com/repos/Hostalika/cpanel-backup/contents/VERSION"         2>/dev/null | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode().strip())" 2>/dev/null)
-    # Fallback to raw URL if API fails
+    remote_ver=$(curl -fsSL "${REPO_API}/VERSION" 2>/dev/null \
+        | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode().strip())" 2>/dev/null)
     [ -z "$remote_ver" ] && remote_ver=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null | tr -d '[:space:]')
     local_ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null | tr -d '[:space:]' || echo "0.0.0")
+
     if [ "$remote_ver" = "$local_ver" ]; then
         echo "Already up to date (v${local_ver})"
         exit 0
     fi
     echo "Updating from v${local_ver} to v${remote_ver}..."
 
-    # Save all current settings
     local s_host s_user s_port s_dir s_key s_temp s_keep s_bot s_chats s_log
     local b_token b_ruser b_rhost b_auth
     s_host=$(get_sh_val REMOTE_HOST)
@@ -313,7 +308,6 @@ cmd_update() {
     b_token=$(get_py_val BOT_TOKEN)
     b_ruser=$(get_py_val REMOTE_USER)
     b_rhost=$(get_py_val REMOTE_HOST)
-    # Save authorized users block from bot
     b_auth=$(python3 -c "
 import re
 content = open('${BOT}').read()
@@ -323,7 +317,6 @@ if m:
     print('\n'.join(users))
 " 2>/dev/null)
 
-    # Download new files via API to bypass CDN cache
     echo "Downloading updated files..."
     download_file "cpanel_backup.sh"     "/usr/local/bin/cpanel_backup.sh"
     download_file "cpanel_backup_bot.py" "/usr/local/bin/cpanel_backup_bot.py"
@@ -332,7 +325,6 @@ if m:
     chmod 700 /usr/local/bin/cpanel_backup_bot.py
     chmod +x  /usr/local/bin/hbm
 
-    # Restore settings to backup script
     [ -n "$s_host"  ] && set_sh_val REMOTE_HOST        "$s_host"
     [ -n "$s_user"  ] && set_sh_val REMOTE_USER        "$s_user"
     [ -n "$s_port"  ] && set_sh_val REMOTE_PORT        "$s_port"
@@ -343,17 +335,14 @@ if m:
     [ -n "$s_bot"   ] && set_sh_val TELEGRAM_BOT_TOKEN "$s_bot"
     [ -n "$s_chats" ] && set_sh_val TELEGRAM_CHAT_IDS  "$s_chats"
     [ -n "$s_log"   ] && set_sh_val LOG_FILE           "$s_log"
-
-    # Restore settings to bot script
     [ -n "$b_token" ] && set_py_val BOT_TOKEN    "$b_token"
     [ -n "$b_ruser" ] && set_py_val REMOTE_USER  "$b_ruser"
     [ -n "$b_rhost" ] && set_py_val REMOTE_HOST  "$b_rhost"
 
-    # Restore authorized users
     if [ -n "$b_auth" ]; then
         local users_str=""
         while IFS= read -r uid; do
-            [ -n "$uid" ] && users_str+="    \"${uid}\",\n"
+            [ -n "$uid" ] && users_str="${users_str}    \"${uid}\",\n"
         done <<< "$b_auth"
         python3 -c "
 import re
@@ -429,36 +418,27 @@ cmd_list() {
 cmd_stop() {
     local pids found
     found=0
-
-    # Find and kill pkgacct processes
     pids=$(ps aux | grep pkgacct | grep -v grep | awk '{print $2}')
     if [ -n "$pids" ]; then
         echo "Stopping pkgacct processes: $pids"
         kill $pids 2>/dev/null
         found=1
     fi
-
-    # Find and kill the backup script
     pids=$(ps aux | grep cpanel_backup.sh | grep -v grep | awk '{print $2}')
     if [ -n "$pids" ]; then
-        echo "Stopping backup script processes: $pids"
+        echo "Stopping backup script: $pids"
         kill $pids 2>/dev/null
         found=1
     fi
-
     if [ "$found" -eq 0 ]; then
         echo "No backup process is currently running."
         exit 0
     fi
-
     sleep 2
-
-    # Verify stopped
     if ps aux | grep -E "cpanel_backup.sh|pkgacct" | grep -v grep &>/dev/null; then
-        echo -e "${YELLOW}Some processes still running - forcing stop...${NC}"
+        echo -e "${YELLOW}Forcing stop...${NC}"
         ps aux | grep -E "cpanel_backup.sh|pkgacct" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null
     fi
-
     echo -e "${GREEN}Backup stopped.${NC}"
     echo "Cleaning up temp files..."
     cmd_clean
@@ -524,7 +504,7 @@ cmd_backup() {
 }
 
 cmd_restore() {
-    local username rhost ruser rport skey rdir backup_path
+    local username rhost ruser rport skey rdir backup_path fname
     [ -z "$1" ] && { echo "Usage: hbm restore <username> [date]"; cmd_list; exit 1; }
     username="$1"
     rhost=$(get_sh_val REMOTE_HOST)
@@ -545,7 +525,6 @@ cmd_restore() {
     echo "Target    : /home/"
     scp -i "$skey" -P "$rport" -o StrictHostKeyChecking=no \
         "${ruser}@${rhost}:${backup_path}" /home/
-    local fname
     fname=$(basename "$backup_path")
     echo ""
     echo "File: /home/${fname}"
