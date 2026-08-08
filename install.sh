@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  Hostalika cPanel Backup System - Installer
-#  Version: 2.3.0
+#  Version: 2.4.0
 #  Usage: bash <(curl -s https://raw.githubusercontent.com/Hostalika/cpanel-backup/main/install.sh)
 # =============================================================================
 
@@ -18,7 +18,7 @@ step() { echo -e "\n${BLUE}[====]${NC}  $1"; }
 
 echo ""
 echo "=============================================="
-echo "   Hostalika cPanel Backup System v2.3.0    "
+echo "   Hostalika cPanel Backup System v2.4.0    "
 echo "=============================================="
 echo ""
 
@@ -67,29 +67,60 @@ fi
 
 step "Configuration..."
 echo ""
-read -p "  Backup server IP                              : " BACKUP_IP
+read -p "  Backup server IP                             : " BACKUP_IP
 read -p "  Backup server SSH user (default: backupuser) : " BACKUP_USER
 BACKUP_USER=${BACKUP_USER:-backupuser}
 read -p "  Backup server SSH port (default: 22)         : " BACKUP_PORT
 BACKUP_PORT=${BACKUP_PORT:-22}
-read -p "  Telegram Bot Token                            : " BOT_TOKEN
+read -p "  Telegram Bot Token                           : " BOT_TOKEN
 read -p "  Telegram Chat ID(s)                          : " CHAT_IDS
 read -p "  Keep N backups (default: 3)                  : " KEEP_N
 KEEP_N=${KEEP_N:-3}
-read -p "  Cron schedule (default: 0 5 * * 5)           : " CRON_SCHEDULE
-CRON_SCHEDULE=${CRON_SCHEDULE:-"0 5 * * 5"}
 
-sed -i "s|REMOTE_HOST=\"YOUR_BACKUP_SERVER_IP\"|REMOTE_HOST=\"${BACKUP_IP}\"|"            /usr/local/bin/cpanel_backup.sh
-sed -i "s|REMOTE_USER=\"backupuser\"|REMOTE_USER=\"${BACKUP_USER}\"|"                     /usr/local/bin/cpanel_backup.sh
-sed -i "s|REMOTE_PORT=\"22\"|REMOTE_PORT=\"${BACKUP_PORT}\"|"                             /usr/local/bin/cpanel_backup.sh
-sed -i "s|TELEGRAM_BOT_TOKEN=\"YOUR_BOT_TOKEN_HERE\"|TELEGRAM_BOT_TOKEN=\"${BOT_TOKEN}\"|" /usr/local/bin/cpanel_backup.sh
-sed -i "s|TELEGRAM_CHAT_IDS=\"YOUR_CHAT_ID_HERE\"|TELEGRAM_CHAT_IDS=\"${CHAT_IDS}\"|"     /usr/local/bin/cpanel_backup.sh
-sed -i "s|^KEEP_BACKUPS=3|KEEP_BACKUPS=${KEEP_N}|"                                        /usr/local/bin/cpanel_backup.sh
-sed -i "s|BOT_TOKEN     = \"YOUR_BOT_TOKEN_HERE\"|BOT_TOKEN     = \"${BOT_TOKEN}\"|"       /usr/local/bin/cpanel_backup_bot.py
-sed -i "s|REMOTE_HOST   = \"YOUR_BACKUP_SERVER_IP\"|REMOTE_HOST   = \"${BACKUP_IP}\"|"    /usr/local/bin/cpanel_backup_bot.py
-sed -i "s|REMOTE_USER   = \"backupuser\"|REMOTE_USER   = \"${BACKUP_USER}\"|"             /usr/local/bin/cpanel_backup_bot.py
+# Backup schedule - simple selection
+echo ""
+echo "  Backup schedule:"
+echo "    1) Daily"
+echo "    2) Every 2 days"
+echo "    3) Every 3 days"
+echo "    4) Weekly (every Friday)"
+echo "    5) Custom (cron expression)"
+echo ""
+read -p "  Choose [1-5] (default: 2): " SCHEDULE_CHOICE
+SCHEDULE_CHOICE=${SCHEDULE_CHOICE:-2}
+
+read -p "  At what hour? (0-23) (default: 2): " BACKUP_HOUR
+BACKUP_HOUR=${BACKUP_HOUR:-2}
+
+case "$SCHEDULE_CHOICE" in
+    1) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * *"
+       SCHEDULE_DESC="daily at ${BACKUP_HOUR}:00" ;;
+    2) CRON_SCHEDULE="0 ${BACKUP_HOUR} */2 * *"
+       SCHEDULE_DESC="every 2 days at ${BACKUP_HOUR}:00" ;;
+    3) CRON_SCHEDULE="0 ${BACKUP_HOUR} */3 * *"
+       SCHEDULE_DESC="every 3 days at ${BACKUP_HOUR}:00" ;;
+    4) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * 5"
+       SCHEDULE_DESC="every Friday at ${BACKUP_HOUR}:00" ;;
+    5) read -p "  Enter cron expression: " CRON_SCHEDULE
+       SCHEDULE_DESC="custom: ${CRON_SCHEDULE}" ;;
+    *) CRON_SCHEDULE="0 ${BACKUP_HOUR} */2 * *"
+       SCHEDULE_DESC="every 2 days at ${BACKUP_HOUR}:00" ;;
+esac
+
+echo ""
+log "Schedule set: ${SCHEDULE_DESC}"
+
+sed -i "s|REMOTE_HOST=\"YOUR_BACKUP_SERVER_IP\"|REMOTE_HOST=\"${BACKUP_IP}\"|"             /usr/local/bin/cpanel_backup.sh
+sed -i "s|REMOTE_USER=\"backupuser\"|REMOTE_USER=\"${BACKUP_USER}\"|"                      /usr/local/bin/cpanel_backup.sh
+sed -i "s|REMOTE_PORT=\"22\"|REMOTE_PORT=\"${BACKUP_PORT}\"|"                              /usr/local/bin/cpanel_backup.sh
+sed -i "s|TELEGRAM_BOT_TOKEN=\"YOUR_BOT_TOKEN_HERE\"|TELEGRAM_BOT_TOKEN=\"${BOT_TOKEN}\"|"  /usr/local/bin/cpanel_backup.sh
+sed -i "s|TELEGRAM_CHAT_IDS=\"YOUR_CHAT_ID_HERE\"|TELEGRAM_CHAT_IDS=\"${CHAT_IDS}\"|"      /usr/local/bin/cpanel_backup.sh
+sed -i "s|^KEEP_BACKUPS=3|KEEP_BACKUPS=${KEEP_N}|"                                         /usr/local/bin/cpanel_backup.sh
+sed -i "s|BOT_TOKEN     = \"YOUR_BOT_TOKEN_HERE\"|BOT_TOKEN     = \"${BOT_TOKEN}\"|"        /usr/local/bin/cpanel_backup_bot.py
+sed -i "s|REMOTE_HOST   = \"YOUR_BACKUP_SERVER_IP\"|REMOTE_HOST   = \"${BACKUP_IP}\"|"     /usr/local/bin/cpanel_backup_bot.py
+sed -i "s|REMOTE_USER   = \"backupuser\"|REMOTE_USER   = \"${BACKUP_USER}\"|"              /usr/local/bin/cpanel_backup_bot.py
 FIRST_CHAT=$(echo $CHAT_IDS | awk '{print $1}')
-sed -i "s|\"YOUR_CHAT_ID_HERE\"|\"${FIRST_CHAT}\"|"                                        /usr/local/bin/cpanel_backup_bot.py
+sed -i "s|\"YOUR_CHAT_ID_HERE\"|\"${FIRST_CHAT}\"|"                                         /usr/local/bin/cpanel_backup_bot.py
 log "Configuration applied"
 
 step "Installing Telegram bot as service..."
@@ -117,7 +148,7 @@ log "Bot service started"
 step "Setting up cron job..."
 (crontab -l 2>/dev/null | grep -v cpanel_backup; \
  echo "${CRON_SCHEDULE} /usr/local/bin/cpanel_backup.sh >> /var/log/cpanel_backup.log 2>&1") | crontab -
-log "Cron job added: ${CRON_SCHEDULE}"
+log "Cron job added: ${SCHEDULE_DESC}"
 
 step "SSH key setup..."
 echo ""
@@ -126,7 +157,7 @@ echo "  -------------------------------------------------------"
 cat /root/.ssh/backup_key.pub
 echo "  -------------------------------------------------------"
 echo ""
-echo "  Run on backup server (${BACKUP_USER}@${BACKUP_IP}):"
+echo "  Run on backup server:"
 echo "  echo \"$(cat /root/.ssh/backup_key.pub)\" >> /home/${BACKUP_USER}/.ssh/authorized_keys"
 echo ""
 read -p "  Press Enter after adding the key..."
@@ -144,8 +175,12 @@ hash -r 2>/dev/null || true
 
 echo ""
 echo "=============================================="
-echo "   Installation Complete! v2.3.0"
+echo "   Installation Complete! v2.4.0"
 echo "=============================================="
+echo ""
+echo "  Backup schedule : ${SCHEDULE_DESC}"
+echo "  Backup server   : ${BACKUP_USER}@${BACKUP_IP}:${BACKUP_PORT}"
+echo "  Keep backups    : ${KEEP_N} copies"
 echo ""
 echo "  Usage: hbm <command>"
 echo ""
