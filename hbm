@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  hbm - Hostalika Backup Manager
-#  Version: 2.4.0
+#  Version: 2.4.1
 #  Usage: hbm <command> [options]
 # =============================================================================
 
@@ -11,7 +11,11 @@ SCRIPT="/usr/local/bin/cpanel_backup.sh"
 BOT="/usr/local/bin/cpanel_backup_bot.py"
 LOG_FILE="/var/log/cpanel_backup.log"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
 ok()   { echo -e "  ${GREEN}[OK]${NC}    $1"; }
 fail() { echo -e "  ${RED}[FAIL]${NC}  $1"; }
@@ -19,63 +23,116 @@ warn() { echo -e "  ${YELLOW}[WARN]${NC}  $1"; }
 
 cmd_help() {
     echo ""
-    echo -e "${BLUE}Hostalika Backup Manager v$(cat ${INSTALL_DIR}/VERSION 2>/dev/null || echo '?')${NC}"
+    local ver
+    ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "?")
+    echo -e "${BLUE}Hostalika Backup Manager v${ver}${NC}"
     echo ""
     echo "Usage: hbm <command> [options]"
     echo ""
     echo "System:"
-    echo "  hbm install          Install the backup system"
-    echo "  hbm update           Update to latest version"
-    echo "  hbm remove           Uninstall everything"
-    echo "  hbm version          Show current version"
-    echo "  hbm status           Show system status"
-    echo "  hbm config           Edit configuration"
-    echo "  hbm test             Run full diagnostics"
+    echo "  hbm install              Install the backup system"
+    echo "  hbm update               Update to latest version"
+    echo "  hbm remove               Uninstall everything"
+    echo "  hbm version              Show current version"
+    echo "  hbm status               Show system status"
+    echo "  hbm config               Edit configuration"
+    echo "  hbm test                 Run full diagnostics"
     echo ""
     echo "Backup:"
-    echo "  hbm backup           Start a full backup now (background)"
-    echo "  hbm backup <user>    Backup a single cPanel account"
-    echo "  hbm restore <user>   Copy backup file for WHM restore"
+    echo "  hbm backup               Start a full backup now"
+    echo "  hbm backup <user>        Backup a single account"
+    echo "  hbm restore <user>       Restore latest backup"
     echo "  hbm restore <user> <date>  Restore from specific date"
     echo ""
     echo "Info:"
-    echo "  hbm logs             Show last 50 log lines"
-    echo "  hbm logs live        Follow log in real-time"
-    echo "  hbm list             List available backups"
-    echo "  hbm disk             Show disk usage"
+    echo "  hbm logs                 Show last 50 log lines"
+    echo "  hbm logs live            Follow log in real-time"
+    echo "  hbm list                 List available backups"
+    echo "  hbm disk                 Show disk usage"
     echo ""
     echo "Maintenance:"
-    echo "  hbm clean            Remove stale temp folders"
-    echo "  hbm restart          Restart Telegram bot"
+    echo "  hbm clean                Remove stale temp folders"
+    echo "  hbm restart              Restart Telegram bot"
     echo ""
 }
 
 cmd_version() {
-    local ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
-    local remote=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null || echo "unknown")
+    local ver
+    local remote
+    ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
+    remote=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null || echo "unknown")
     echo "Installed : v${ver}"
     echo "Latest    : v${remote}"
-    [ "$ver" != "$remote" ] && echo -e "${YELLOW}Update available: run 'hbm update'${NC}" \
-        || echo -e "${GREEN}Up to date${NC}"
+    if [ "$ver" != "$remote" ]; then
+        echo -e "${YELLOW}Update available: run hbm update${NC}"
+    else
+        echo -e "${GREEN}Up to date${NC}"
+    fi
 }
 
 cmd_status() {
+    local ver bot_status cron_line rhost ruser keep last_run last_status disk
+    ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
+    bot_status=$(systemctl is-active cpanel-backup-bot 2>/dev/null || echo "not installed")
+    cron_line=$(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}' || echo "not set")
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    keep=$(grep '^KEEP_BACKUPS=' "$SCRIPT" | cut -d'=' -f2)
+    last_run=$(grep 'Backup Report' "$LOG_FILE" 2>/dev/null | tail -1 | awk '{print $1,$2}' || echo "never")
+    last_status=$(grep 'Backup Report -' "$LOG_FILE" 2>/dev/null | tail -1 | grep -oP '(?<=- ).*' || echo "N/A")
+    disk=$(df -h /backup 2>/dev/null | awk 'NR==2 {print $3" used / "$2" total ("$5")"}')
     echo "=============================================="
     echo "   Hostalika Backup System Status"
     echo "=============================================="
-    echo "Version      : $(cat ${INSTALL_DIR}/VERSION 2>/dev/null || echo 'unknown')"
-    echo "Bot service  : $(systemctl is-active cpanel-backup-bot 2>/dev/null || echo 'not installed')"
-    echo "Cron         : $(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}' || echo 'not set')"
-    echo "Backup server: $(grep '^REMOTE_HOST=' $SCRIPT | cut -d'"' -f2)"
-    echo "SSH user     : $(grep '^REMOTE_USER=' $SCRIPT | cut -d'"' -f2)"
-    echo "Keep backups : $(grep '^KEEP_BACKUPS=' $SCRIPT | cut -d'=' -f2)"
-    echo "Last run     : $(grep 'Backup Report' $LOG_FILE 2>/dev/null | tail -1 | awk '{print $1,$2}' || echo 'never')"
-    echo "Last status  : $(grep 'Backup Report -' $LOG_FILE 2>/dev/null | tail -1 | grep -oP '(?<=- ).*' || echo 'N/A')"
-    echo "Disk (local) : $(df -h /backup 2>/dev/null | awk 'NR==2 {print $3" used / "$2" total ("$5")"}')"
+    echo "Version      : ${ver}"
+    echo "Bot service  : ${bot_status}"
+    echo "Cron         : ${cron_line}"
+    echo "Backup server: ${rhost}"
+    echo "SSH user     : ${ruser}"
+    echo "Keep backups : ${keep}"
+    echo "Last run     : ${last_run}"
+    echo "Last status  : ${last_status}"
+    echo "Disk (local) : ${disk}"
     echo "=============================================="
 }
 
+ask_schedule() {
+    echo ""
+    echo "  Backup schedule:"
+    echo "    1) Daily"
+    echo "    2) Every 2 days"
+    echo "    3) Every 3 days"
+    echo "    4) Weekly (every Friday)"
+    echo "    5) Custom (cron expression)"
+    echo ""
+    read -p "  Choose [1-5]: " SCHEDULE_CHOICE
+    if [ -n "$SCHEDULE_CHOICE" ]; then
+        read -p "  At what hour? (0-23) [default: 2]: " BACKUP_HOUR
+        BACKUP_HOUR=${BACKUP_HOUR:-2}
+        case "$SCHEDULE_CHOICE" in
+            1) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * *"
+               SCHEDULE_DESC="daily at ${BACKUP_HOUR}:00" ;;
+            2) CRON_SCHEDULE="0 ${BACKUP_HOUR} */2 * *"
+               SCHEDULE_DESC="every 2 days at ${BACKUP_HOUR}:00" ;;
+            3) CRON_SCHEDULE="0 ${BACKUP_HOUR} */3 * *"
+               SCHEDULE_DESC="every 3 days at ${BACKUP_HOUR}:00" ;;
+            4) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * 5"
+               SCHEDULE_DESC="every Friday at ${BACKUP_HOUR}:00" ;;
+            5) read -p "  Enter cron expression: " CRON_SCHEDULE
+               SCHEDULE_DESC="custom: ${CRON_SCHEDULE}" ;;
+            *) CRON_SCHEDULE=""
+               SCHEDULE_DESC="" ;;
+        esac
+        if [ -n "$CRON_SCHEDULE" ]; then
+            (crontab -l 2>/dev/null | grep -v cpanel_backup; \
+             echo "${CRON_SCHEDULE} /usr/local/bin/cpanel_backup.sh >> ${LOG_FILE} 2>&1") | crontab -
+            echo -e "  ${GREEN}Schedule set: ${SCHEDULE_DESC}${NC}"
+        fi
+    fi
+}
+
 cmd_config() {
+    local v
     echo -e "\n${BLUE}Current Configuration:${NC}"
     echo "----------------------------------------"
     grep -E "^REMOTE_HOST=|^REMOTE_USER=|^REMOTE_PORT=|^KEEP_BACKUPS=|^TELEGRAM_BOT_TOKEN=|^TELEGRAM_CHAT_IDS=" "$SCRIPT"
@@ -84,10 +141,16 @@ cmd_config() {
     echo -e "\n${YELLOW}Leave blank to keep current value${NC}\n"
 
     read -p "  Backup server IP       [$(grep '^REMOTE_HOST=' $SCRIPT | cut -d'"' -f2)]: " v
-    [ -n "$v" ] && { sed -i "s|^REMOTE_HOST=.*|REMOTE_HOST=\"${v}\"|" "$SCRIPT"; sed -i "s|REMOTE_HOST   = .*|REMOTE_HOST   = \"${v}\"|" "$BOT"; }
+    if [ -n "$v" ]; then
+        sed -i "s|^REMOTE_HOST=.*|REMOTE_HOST=\"${v}\"|" "$SCRIPT"
+        sed -i "s|REMOTE_HOST   = .*|REMOTE_HOST   = \"${v}\"|" "$BOT"
+    fi
 
     read -p "  Backup server SSH user [$(grep '^REMOTE_USER=' $SCRIPT | cut -d'"' -f2)]: " v
-    [ -n "$v" ] && { sed -i "s|^REMOTE_USER=.*|REMOTE_USER=\"${v}\"|" "$SCRIPT"; sed -i "s|REMOTE_USER   = .*|REMOTE_USER   = \"${v}\"|" "$BOT"; }
+    if [ -n "$v" ]; then
+        sed -i "s|^REMOTE_USER=.*|REMOTE_USER=\"${v}\"|" "$SCRIPT"
+        sed -i "s|REMOTE_USER   = .*|REMOTE_USER   = \"${v}\"|" "$BOT"
+    fi
 
     read -p "  Backup server SSH port [$(grep '^REMOTE_PORT=' $SCRIPT | cut -d'"' -f2)]: " v
     [ -n "$v" ] && sed -i "s|^REMOTE_PORT=.*|REMOTE_PORT=\"${v}\"|" "$SCRIPT"
@@ -96,119 +159,113 @@ cmd_config() {
     [ -n "$v" ] && sed -i "s|^KEEP_BACKUPS=.*|KEEP_BACKUPS=${v}|" "$SCRIPT"
 
     read -p "  Telegram Bot Token     [$(grep '^TELEGRAM_BOT_TOKEN=' $SCRIPT | cut -d'"' -f2)]: " v
-    [ -n "$v" ] && { sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=\"${v}\"|" "$SCRIPT"; sed -i "s|BOT_TOKEN     = .*|BOT_TOKEN     = \"${v}\"|" "$BOT"; }
+    if [ -n "$v" ]; then
+        sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=\"${v}\"|" "$SCRIPT"
+        sed -i "s|BOT_TOKEN     = .*|BOT_TOKEN     = \"${v}\"|" "$BOT"
+    fi
 
     read -p "  Telegram Chat ID(s)    [$(grep '^TELEGRAM_CHAT_IDS=' $SCRIPT | cut -d'"' -f2)]: " v
     [ -n "$v" ] && sed -i "s|^TELEGRAM_CHAT_IDS=.*|TELEGRAM_CHAT_IDS=\"${v}\"|" "$SCRIPT"
 
-    # Schedule selection
-    echo ""
-    echo "  Backup schedule:"
-    echo "    1) Daily"
-    echo "    2) Every 2 days"
-    echo "    3) Every 3 days"
-    echo "    4) Weekly (every Friday)"
-    echo "    5) Custom (cron expression)"
-    echo "    Leave blank to keep current"
-    echo ""
-    read -p "  Choose [1-5]: " SCHEDULE_CHOICE
-
-    if [ -n "$SCHEDULE_CHOICE" ]; then
-        read -p "  At what hour? (0-23) (default: 2): " BACKUP_HOUR
-        BACKUP_HOUR=${BACKUP_HOUR:-2}
-        case "$SCHEDULE_CHOICE" in
-            1) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * *";   SCHEDULE_DESC="daily at ${BACKUP_HOUR}:00" ;;
-            2) CRON_SCHEDULE="0 ${BACKUP_HOUR} */2 * *"; SCHEDULE_DESC="every 2 days at ${BACKUP_HOUR}:00" ;;
-            3) CRON_SCHEDULE="0 ${BACKUP_HOUR} */3 * *"; SCHEDULE_DESC="every 3 days at ${BACKUP_HOUR}:00" ;;
-            4) CRON_SCHEDULE="0 ${BACKUP_HOUR} * * 5";   SCHEDULE_DESC="every Friday at ${BACKUP_HOUR}:00" ;;
-            5) read -p "  Enter cron expression: " CRON_SCHEDULE; SCHEDULE_DESC="custom" ;;
-        esac
-        (crontab -l 2>/dev/null | grep -v cpanel_backup; \
-         echo "${CRON_SCHEDULE} /usr/local/bin/cpanel_backup.sh >> ${LOG_FILE} 2>&1") | crontab -
-        echo -e "  ${GREEN}Schedule set: ${SCHEDULE_DESC}${NC}"
-    fi
+    ask_schedule
 
     echo -e "\n${GREEN}Configuration updated.${NC}"
     systemctl restart cpanel-backup-bot 2>/dev/null && echo "Bot restarted." || true
 
     echo -e "\n${BLUE}Testing SSH connection...${NC}"
-    RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-    RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-    RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-    SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
-    if ssh -i "$SKEY" -p "$RPORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-       -o BatchMode=yes "${RUSER}@${RHOST}" "echo ok" &>/dev/null; then
+    local rhost ruser rport skey
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+    if ssh -i "$skey" -p "$rport" -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+       -o BatchMode=yes "${ruser}@${rhost}" "echo ok" &>/dev/null; then
         echo -e "${GREEN}Connection successful!${NC}"
     else
-        echo -e "${RED}Connection failed. Add this key to ${RHOST}:${NC}"
-        cat "${SKEY}.pub"
+        echo -e "${RED}Connection failed. Add this key to ${rhost}:${NC}"
+        cat "${skey}.pub"
     fi
 }
 
 cmd_test() {
-    RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-    RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-    RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-    SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
-    BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' "$SCRIPT" | cut -d'"' -f2)
+    local rhost ruser rport skey bot_token free rdisk tg_ok
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+    bot_token=$(grep '^TELEGRAM_BOT_TOKEN=' "$SCRIPT" | cut -d'"' -f2)
 
     echo -e "\n${BLUE}====== Hostalika Backup System - Diagnostics ======${NC}\n"
+
     [ -f /usr/local/cpanel/bin/pkgacct ] && ok "cPanel found"     || fail "cPanel not found"
     command -v curl    &>/dev/null && ok "curl installed"    || fail "curl not installed"
     command -v rsync   &>/dev/null && ok "rsync installed"   || fail "rsync not installed"
     command -v python3 &>/dev/null && ok "python3 installed" || fail "python3 not installed"
-    [ -f "$SKEY" ] && ok "SSH key exists" || fail "SSH key missing: $SKEY"
+    [ -f "$skey" ]                 && ok "SSH key exists"    || fail "SSH key missing: $skey"
 
-    ssh -i "$SKEY" -p "$RPORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
-        -o BatchMode=yes "${RUSER}@${RHOST}" "echo ok" &>/dev/null \
-        && ok "SSH connection to ${RHOST}" || fail "SSH connection to ${RHOST} failed"
+    if ssh -i "$skey" -p "$rport" -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+       -o BatchMode=yes "${ruser}@${rhost}" "echo ok" &>/dev/null; then
+        ok "SSH connection to ${rhost}"
+    else
+        fail "SSH connection to ${rhost} failed"
+    fi
 
-    rsync -e "ssh -i ${SKEY} -p ${RPORT} -o StrictHostKeyChecking=no" \
-        --dry-run /etc/hostname "${RUSER}@${RHOST}:/tmp/" &>/dev/null \
-        && ok "rsync works" || fail "rsync failed"
+    if rsync -e "ssh -i ${skey} -p ${rport} -o StrictHostKeyChecking=no" \
+       --dry-run /etc/hostname "${ruser}@${rhost}:/tmp/" &>/dev/null; then
+        ok "rsync works"
+    else
+        fail "rsync failed"
+    fi
 
-    FREE=$(df -BG /backup 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G')
-    [ -n "$FREE" ] && [ "$FREE" -gt 20 ] && ok "Local disk: ${FREE}GB free" || warn "Local disk low: ${FREE}GB free"
+    free=$(df -BG /backup 2>/dev/null | awk 'NR==2 {print $4}' | tr -d 'G')
+    if [ -n "$free" ] && [ "$free" -gt 20 ]; then
+        ok "Local disk: ${free}GB free"
+    else
+        warn "Local disk low: ${free}GB free"
+    fi
 
-    RDISK=$(ssh -i "$SKEY" -p "$RPORT" -o StrictHostKeyChecking=no \
-        "${RUSER}@${RHOST}" "df -h /backup 2>/dev/null | awk 'NR==2 {print \$4}'" 2>/dev/null)
-    [ -n "$RDISK" ] && ok "Backup server disk: ${RDISK} free" || warn "Could not check backup server disk"
+    rdisk=$(ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no \
+        "${ruser}@${rhost}" "df -h /backup 2>/dev/null | awk 'NR==2 {print \$4}'" 2>/dev/null)
+    [ -n "$rdisk" ] && ok "Backup server disk: ${rdisk} free" || warn "Could not check backup server disk"
 
-    TG_OK=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe" 2>/dev/null | \
+    tg_ok=$(curl -s "https://api.telegram.org/bot${bot_token}/getMe" 2>/dev/null | \
         python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ok',''))" 2>/dev/null)
-    [ "$TG_OK" = "True" ] && ok "Telegram bot token valid" || fail "Telegram bot token invalid"
+    [ "$tg_ok" = "True" ] && ok "Telegram bot token valid" || fail "Telegram bot token invalid"
 
     systemctl is-active cpanel-backup-bot &>/dev/null && ok "Bot service running" || warn "Bot service not running"
 
-    crontab -l 2>/dev/null | grep -q cpanel_backup \
-        && ok "Cron: $(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}')" \
-        || warn "Cron job not set"
+    if crontab -l 2>/dev/null | grep -q cpanel_backup; then
+        ok "Cron: $(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}')"
+    else
+        warn "Cron job not set"
+    fi
 
     echo -e "\n${BLUE}===================================================${NC}\n"
 }
 
 cmd_update() {
+    local remote_ver local_ver
     echo "[hbm] Checking for updates..."
-    REMOTE_VER=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null)
-    LOCAL_VER=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "0.0.0")
-    if [ "$REMOTE_VER" = "$LOCAL_VER" ]; then
-        echo "Already up to date (v${LOCAL_VER})"
+    remote_ver=$(curl -fsSL "${REPO_URL}/VERSION" 2>/dev/null)
+    local_ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "0.0.0")
+    if [ "$remote_ver" = "$local_ver" ]; then
+        echo "Already up to date (v${local_ver})"
         exit 0
     fi
-    echo "Updating from v${LOCAL_VER} to v${REMOTE_VER}..."
+    echo "Updating from v${local_ver} to v${remote_ver}..."
     curl -fsSL "${REPO_URL}/cpanel_backup.sh"     -o /usr/local/bin/cpanel_backup.sh
     curl -fsSL "${REPO_URL}/cpanel_backup_bot.py" -o /usr/local/bin/cpanel_backup_bot.py
     curl -fsSL "${REPO_URL}/hbm"                  -o /usr/local/bin/hbm
     chmod 700 /usr/local/bin/cpanel_backup.sh
     chmod 700 /usr/local/bin/cpanel_backup_bot.py
     chmod +x  /usr/local/bin/hbm
-    echo "$REMOTE_VER" > "${INSTALL_DIR}/VERSION"
+    echo "$remote_ver" > "${INSTALL_DIR}/VERSION"
     systemctl restart cpanel-backup-bot 2>/dev/null || true
-    echo "Update complete - v${REMOTE_VER}"
-    echo "Note: run 'hbm config' if you need to update your settings"
+    echo "Update complete - v${remote_ver}"
 }
 
 cmd_remove() {
+    local confirm
     read -p "Are you sure you want to uninstall? (yes/no): " confirm
     [ "$confirm" != "yes" ] && echo "Aborted." && exit 0
     echo "Uninstalling Hostalika Backup System..."
@@ -235,107 +292,115 @@ cmd_logs() {
 }
 
 cmd_disk() {
-    RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-    RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-    RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-    SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+    local rhost ruser rport skey
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
     echo "=== Local Server ==="
     df -h /backup
     echo ""
-    echo "=== Backup Server (${RHOST}) ==="
-    ssh -i "$SKEY" -p "$RPORT" -o StrictHostKeyChecking=no "${RUSER}@${RHOST}" "df -h /backup"
+    echo "=== Backup Server (${rhost}) ==="
+    ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no "${ruser}@${rhost}" "df -h /backup"
 }
 
 cmd_list() {
-    RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-    RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-    RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-    SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
-    RDIR=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
-    echo "=== Available Backups on ${RHOST} ==="
-    ssh -i "$SKEY" -p "$RPORT" -o StrictHostKeyChecking=no "${RUSER}@${RHOST}" "
-for d in \$(ls -dt ${RDIR}/????-??-??_??-?? 2>/dev/null); do
-    count=\$(ls \$d/*.tar.gz \$d/*.tar 2>/dev/null | wc -l)
-    size=\$(du -sh \$d | cut -f1)
-    echo \"  \$(basename \$d)  |  \${count} accounts  |  \${size}\"
-done
-" 2>/dev/null || echo "No backups found"
+    local rhost ruser rport skey rdir
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
+    echo "=== Available Backups on ${rhost} ==="
+    ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no "${ruser}@${rhost}" \
+        "for d in \$(ls -dt ${rdir}/????-??-??_??-?? 2>/dev/null); do
+            count=\$(ls \$d/*.tar.gz \$d/*.tar 2>/dev/null | wc -l)
+            size=\$(du -sh \$d | cut -f1)
+            echo \"  \$(basename \$d)  |  \${count} accounts  |  \${size}\"
+         done" 2>/dev/null || echo "No backups found"
 }
 
 cmd_clean() {
-    TEMP_DIR="/backup/temp_cpanel"
-    echo "Checking for stale temp folders..."
+    local temp_dir count sz
+    temp_dir="/backup/temp_cpanel"
     count=0
-    for d in "${TEMP_DIR}"/????-??-??_??-??; do
+    echo "Checking for stale temp folders..."
+    for d in "${temp_dir}"/????-??-??_??-??; do
         [ -d "$d" ] || continue
         sz=$(du -sh "$d" | cut -f1)
         rm -rf "$d"
         echo -e "  ${YELLOW}[REMOVED]${NC} $(basename $d) ($sz)"
         ((count++))
     done
-    [ $count -eq 0 ] && echo -e "  ${GREEN}No stale folders found.${NC}" \
-        || echo -e "\n  ${GREEN}Removed $count folder(s).${NC}"
-    echo "Current usage: $(du -sh ${TEMP_DIR} 2>/dev/null | cut -f1)"
+    if [ $count -eq 0 ]; then
+        echo -e "  ${GREEN}No stale folders found.${NC}"
+    else
+        echo -e "\n  ${GREEN}Removed $count folder(s).${NC}"
+    fi
+    echo "Current usage: $(du -sh ${temp_dir} 2>/dev/null | cut -f1)"
 }
 
 cmd_backup() {
-    local TARGET="$1"
-    if [ -z "$TARGET" ]; then
+    local target rhost ruser rport skey rdir date_str tmpdir file fsz
+    target="$1"
+    if [ -z "$target" ]; then
         echo "Starting full backup in background..."
         echo "Monitor: hbm logs live"
         nohup /usr/local/bin/cpanel_backup.sh >> "$LOG_FILE" 2>&1 &
         echo "Backup started with PID: $!"
     else
-        [ ! -d "/var/cpanel/users/${TARGET}" ] && echo "Account not found: ${TARGET}" && exit 1
-        RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-        RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-        RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-        SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
-        RDIR=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
-        DATE=$(date +"%Y-%m-%d_%H-%M")
-        TMPDIR="/backup/temp_cpanel/single-${DATE}"
-        echo "Backing up account: ${TARGET}"
-        mkdir -p "$TMPDIR"
-        /usr/local/cpanel/bin/pkgacct "$TARGET" "$TMPDIR"
-        FILE=$(ls "${TMPDIR}/cpmove-${TARGET}.tar.gz" 2>/dev/null || ls "${TMPDIR}/cpmove-${TARGET}.tar" 2>/dev/null)
-        if [ -n "$FILE" ] && [ -f "$FILE" ]; then
-            echo "Transferring to backup server..."
-            ssh -i "$SKEY" -p "$RPORT" -o StrictHostKeyChecking=no \
-                "${RUSER}@${RHOST}" "mkdir -p ${RDIR}/single-accounts"
-            rsync -avz -e "ssh -i ${SKEY} -p ${RPORT} -o StrictHostKeyChecking=no" \
-                "$FILE" "${RUSER}@${RHOST}:${RDIR}/single-accounts/"
-            rm -rf "$TMPDIR"
-            echo "Done: ${TARGET} backed up to ${RHOST}:${RDIR}/single-accounts/"
+        [ ! -d "/var/cpanel/users/${target}" ] && echo "Account not found: ${target}" && exit 1
+        rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+        ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+        rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+        skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+        rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
+        date_str=$(date +"%Y-%m-%d_%H-%M")
+        tmpdir="/backup/temp_cpanel/single-${date_str}"
+        echo "Backing up account: ${target}"
+        mkdir -p "$tmpdir"
+        /usr/local/cpanel/bin/pkgacct "$target" "$tmpdir"
+        file=$(ls "${tmpdir}/cpmove-${target}.tar.gz" 2>/dev/null || ls "${tmpdir}/cpmove-${target}.tar" 2>/dev/null)
+        if [ -n "$file" ] && [ -f "$file" ]; then
+            fsz=$(du -sh "$file" | cut -f1)
+            echo "Transferring to backup server... (${fsz})"
+            ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no \
+                "${ruser}@${rhost}" "mkdir -p ${rdir}/single-accounts"
+            rsync -avz -e "ssh -i ${skey} -p ${rport} -o StrictHostKeyChecking=no" \
+                "$file" "${ruser}@${rhost}:${rdir}/single-accounts/"
+            rm -rf "$tmpdir"
+            echo "Done: ${target} backed up to ${rhost}:${rdir}/single-accounts/"
         else
-            echo "Backup failed for: ${TARGET}"
-            rm -rf "$TMPDIR"
+            echo "Backup failed for: ${target}"
+            rm -rf "$tmpdir"
             exit 1
         fi
     fi
 }
 
 cmd_restore() {
+    local username rhost ruser rport skey rdir backup_path
     [ -z "$1" ] && { echo "Usage: hbm restore <username> [date]"; hbm list; exit 1; }
-    USERNAME="$1"
-    RHOST=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
-    RUSER=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
-    RPORT=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
-    SKEY=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
-    RDIR=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
+    username="$1"
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'"' -f2)
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'"' -f2)
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'"' -f2)
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'"' -f2)
+    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'"' -f2)
     if [ -n "$2" ]; then
-        BACKUP_PATH="${RDIR}/${2}/cpmove-${USERNAME}.tar.gz"
+        backup_path="${rdir}/${2}/cpmove-${username}.tar.gz"
     else
-        BACKUP_PATH=$(ssh -i "$SKEY" -p "$RPORT" -o StrictHostKeyChecking=no "${RUSER}@${RHOST}" \
-            "ls -t ${RDIR}/????-??-??_??-??/cpmove-${USERNAME}.tar.gz 2>/dev/null | head -1")
+        backup_path=$(ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no "${ruser}@${rhost}" \
+            "ls -t ${rdir}/????-??-??_??-??/cpmove-${username}.tar.gz 2>/dev/null | head -1")
     fi
-    [ -z "$BACKUP_PATH" ] && echo "No backup found for: ${USERNAME}" && exit 1
-    echo "Restoring : ${USERNAME}"
-    echo "Source    : ${RHOST}:${BACKUP_PATH}"
+    [ -z "$backup_path" ] && echo "No backup found for: ${username}" && exit 1
+    echo "Restoring : ${username}"
+    echo "Source    : ${rhost}:${backup_path}"
     echo "Target    : /home/"
-    scp -i "$SKEY" -P "$RPORT" -o StrictHostKeyChecking=no \
-        "${RUSER}@${RHOST}:${BACKUP_PATH}" /home/
+    scp -i "$skey" -P "$rport" -o StrictHostKeyChecking=no \
+        "${ruser}@${rhost}:${backup_path}" /home/
     echo ""
-    echo "File: /home/$(basename $BACKUP_PATH)"
+    echo "File: /home/$(basename $backup_path)"
     echo "Restore via WHM: Transfers > Restore a Full Backup/cpmove File"
 }
 
