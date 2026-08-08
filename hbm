@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  hbm - Hostalika Backup Manager
-#  Version: 2.4.1
+#  Version: 2.4.2
 #  Usage: hbm <command> [options]
 # =============================================================================
 
@@ -253,15 +253,63 @@ cmd_update() {
         exit 0
     fi
     echo "Updating from v${local_ver} to v${remote_ver}..."
+
+    # Save current settings before update
+    local s_host s_user s_port s_dir s_key s_temp s_keep s_bot s_chats s_log
+    s_host=$(grep '^REMOTE_HOST='          "$SCRIPT" | cut -d'"' -f2)
+    s_user=$(grep '^REMOTE_USER='          "$SCRIPT" | cut -d'"' -f2)
+    s_port=$(grep '^REMOTE_PORT='          "$SCRIPT" | cut -d'"' -f2)
+    s_dir=$(grep '^REMOTE_DIR='            "$SCRIPT" | cut -d'"' -f2)
+    s_key=$(grep '^SSH_KEY='               "$SCRIPT" | cut -d'"' -f2)
+    s_temp=$(grep '^LOCAL_TEMP_DIR='       "$SCRIPT" | cut -d'"' -f2)
+    s_keep=$(grep '^KEEP_BACKUPS='         "$SCRIPT" | cut -d'=' -f2)
+    s_bot=$(grep '^TELEGRAM_BOT_TOKEN='    "$SCRIPT" | cut -d'"' -f2)
+    s_chats=$(grep '^TELEGRAM_CHAT_IDS='   "$SCRIPT" | cut -d'"' -f2)
+    s_log=$(grep '^LOG_FILE='              "$SCRIPT" | cut -d'"' -f2)
+
+    # Save bot settings
+    local b_token b_ruser b_rhost b_skey b_users
+    b_token=$(grep '^BOT_TOKEN '     "$BOT" | cut -d'"' -f2)
+    b_ruser=$(grep '^REMOTE_USER '   "$BOT" | cut -d'"' -f2)
+    b_rhost=$(grep '^REMOTE_HOST '   "$BOT" | cut -d'"' -f2)
+
+    # Download new files
     curl -fsSL "${REPO_URL}/cpanel_backup.sh"     -o /usr/local/bin/cpanel_backup.sh
     curl -fsSL "${REPO_URL}/cpanel_backup_bot.py" -o /usr/local/bin/cpanel_backup_bot.py
     curl -fsSL "${REPO_URL}/hbm"                  -o /usr/local/bin/hbm
     chmod 700 /usr/local/bin/cpanel_backup.sh
     chmod 700 /usr/local/bin/cpanel_backup_bot.py
     chmod +x  /usr/local/bin/hbm
+
+    # Restore settings to backup script
+    [ -n "$s_host"  ] && sed -i "s|^REMOTE_HOST=.*|REMOTE_HOST="${s_host}"|"                "$SCRIPT"
+    [ -n "$s_user"  ] && sed -i "s|^REMOTE_USER=.*|REMOTE_USER="${s_user}"|"                "$SCRIPT"
+    [ -n "$s_port"  ] && sed -i "s|^REMOTE_PORT=.*|REMOTE_PORT="${s_port}"|"                "$SCRIPT"
+    [ -n "$s_dir"   ] && sed -i "s|^REMOTE_DIR=.*|REMOTE_DIR="${s_dir}"|"                   "$SCRIPT"
+    [ -n "$s_key"   ] && sed -i "s|^SSH_KEY=.*|SSH_KEY="${s_key}"|"                         "$SCRIPT"
+    [ -n "$s_temp"  ] && sed -i "s|^LOCAL_TEMP_DIR=.*|LOCAL_TEMP_DIR="${s_temp}"|"          "$SCRIPT"
+    [ -n "$s_keep"  ] && sed -i "s|^KEEP_BACKUPS=.*|KEEP_BACKUPS=${s_keep}|"                  "$SCRIPT"
+    [ -n "$s_bot"   ] && sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN="${s_bot}"|"   "$SCRIPT"
+    [ -n "$s_chats" ] && sed -i "s|^TELEGRAM_CHAT_IDS=.*|TELEGRAM_CHAT_IDS="${s_chats}"|"   "$SCRIPT"
+    [ -n "$s_log"   ] && sed -i "s|^LOG_FILE=.*|LOG_FILE="${s_log}"|"                       "$SCRIPT"
+
+    # Restore settings to bot script
+    [ -n "$b_token" ] && sed -i "s|^BOT_TOKEN     = .*|BOT_TOKEN     = "${b_token}"|"  "$BOT"
+    [ -n "$b_ruser" ] && sed -i "s|^REMOTE_USER   = .*|REMOTE_USER   = "${b_ruser}"|"  "$BOT"
+    [ -n "$b_rhost" ] && sed -i "s|^REMOTE_HOST   = .*|REMOTE_HOST   = "${b_rhost}"|"  "$BOT"
+
+    # Restore authorized users list
+    local users_block
+    users_block=$(grep -A 20 '^AUTHORIZED_USERS = \[' "$BOT" | grep -v '^AUTHORIZED_USERS' |         grep '"' | grep -v 'YOUR_CHAT_ID_HERE')
+    if [ -n "$users_block" ]; then
+        # Keep existing users - they are already in the file from sed above
+        :
+    fi
+
     echo "$remote_ver" > "${INSTALL_DIR}/VERSION"
     systemctl restart cpanel-backup-bot 2>/dev/null || true
     echo "Update complete - v${remote_ver}"
+    echo "Settings preserved from previous version."
 }
 
 cmd_remove() {
