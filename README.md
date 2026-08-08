@@ -53,7 +53,11 @@ hbm-uninstall  # Remove everything
 
 **cPanel Server (source):**
 - cPanel / WHM installed
-- AlmaLinux 8 / CloudLinux
+- Any cPanel-supported OS:
+  - AlmaLinux 8 / 9
+  - CloudLinux 8 / 9
+  - Rocky Linux 8 / 9
+  - Ubuntu 20.04 / 22.04
 - root access
 - curl, rsync, python3
 
