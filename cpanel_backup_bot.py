@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # =============================================================================
 #  Telegram Bot Listener - cPanel Backup Controller
-#  Version: 2.0 | Hostalika LLC | Multi-user support
+#  Version: 2.4.0 | Hostalika LLC | Multi-user support
 # =============================================================================
 #
 #  SETTINGS - Edit these values before running
@@ -77,8 +77,7 @@ def handle_backup(chat_id):
         send_message(chat_id, "<b>[Hostalika]</b> A backup is already running. Please wait.")
         return
     backup_running = True
-    broadcast("<b>[Hostalika]</b> Manual backup started.
-A report will be sent when finished.")
+    broadcast("<b>[Hostalika]</b> Manual backup started.\nA report will be sent when finished.")
     logging.info(f"Manual backup triggered by chat_id: {chat_id}")
     try:
         subprocess.Popen(
