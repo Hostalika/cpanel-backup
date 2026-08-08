@@ -31,9 +31,9 @@ hbm test             # Run full diagnostics
 
 ### Backup
 ```bash
-hbm backup                   # Start a full backup now (background)
-hbm backup <username>        # Backup a single cPanel account
-hbm restore <username>       # Restore latest backup of an account
+hbm backup                    # Start a full backup now (background)
+hbm backup <username>         # Backup a single cPanel account
+hbm restore <username>        # Restore latest backup of an account
 hbm restore <username> <date> # Restore from specific date
 ```
 
@@ -49,6 +49,21 @@ hbm disk             # Show disk usage on both servers
 ```bash
 hbm clean            # Remove stale temp folders
 hbm restart          # Restart Telegram bot
+```
+
+## Backup Schedule (hbm config)
+
+When setting the backup schedule, you will be asked to choose:
+
+```
+Backup schedule:
+  1) Daily
+  2) Every 2 days
+  3) Every 3 days
+  4) Weekly (every Friday)
+  5) Custom (cron expression)
+
+At what hour? (0-23)
 ```
 
 ## Telegram Bot Commands
@@ -70,6 +85,7 @@ hbm restart          # Restart Telegram bot
 - Automatic cleanup of stale temp folders
 - Telegram bot for remote control and notifications
 - Multi-user Telegram support
+- Simple schedule selection (no cron knowledge needed)
 
 ## Requirements
 
@@ -87,14 +103,16 @@ hbm restart          # Restart Telegram bot
 
 ## Changelog
 
+### v2.4.0
+- Fixed Telegram bot syntax error
+- Simplified backup schedule selection (no cron knowledge needed)
+- Schedule selection also available in hbm config
+
 ### v2.3.0
-- Unified `hbm` command replacing all separate hbm-* commands
-- `hbm logs live` for real-time log following
-- `hbm version` shows installed vs latest version
+- Unified hbm command replacing all separate hbm-* commands
 
 ### v2.2.0
 - Added diagnostic, maintenance and restore commands
-- Fixed PATH refresh after installation
 
 ### v2.1.0
 - Per-account transfer with immediate local delete
