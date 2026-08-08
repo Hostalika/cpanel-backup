@@ -2,46 +2,54 @@
 
 Automated cPanel backup system with Telegram notifications and remote control.
 
-## Features
-- Full cPanel account backups using pkgacct
-- Per-account transfer with immediate local delete (minimal disk usage)
-- Configurable backup retention (default: 3 copies)
-- Automatic cleanup of stale temp folders
-- Telegram bot for remote control and notifications
-- Multi-user Telegram support
-- Full suite of management commands
-
 ## One-Command Installation
 
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/Hostalika/cpanel-backup/main/install.sh)
 ```
 
-The installer will:
-1. Install required packages (curl, rsync, python3)
-2. Download and configure all scripts
-3. Generate SSH key for server-to-server authentication
-4. Prompt for configuration (backup server IP, Telegram credentials, schedule)
-5. Set up Telegram bot as a systemd service
-6. Add the cron job
+## Usage
 
-## Management Commands
+All management is done through the `hbm` command:
 
-| Command | Description |
-|---------|-------------|
-| `hbm-status` | Show system status |
-| `hbm-config` | Edit configuration interactively |
-| `hbm-test` | Run full system diagnostics |
-| `hbm-update` | Update to latest version |
-| `hbm-logs` | View recent log entries |
-| `hbm-disk` | Show disk usage on both servers |
-| `hbm-list` | List available backups on backup server |
-| `hbm-clean` | Remove stale temp folders |
-| `hbm-backup-now` | Start a full backup immediately |
-| `hbm-backup-account <user>` | Backup a single cPanel account |
-| `hbm-restore <user> [date]` | Copy backup file for restore via WHM |
-| `hbm-restart` | Restart Telegram bot service |
-| `hbm-uninstall` | Remove everything |
+```
+hbm <command> [options]
+```
+
+## Commands
+
+### System
+```bash
+hbm install          # Install the backup system
+hbm update           # Update to latest version
+hbm remove           # Uninstall everything
+hbm version          # Show current and latest version
+hbm status           # Show system status
+hbm config           # Edit configuration interactively
+hbm test             # Run full diagnostics
+```
+
+### Backup
+```bash
+hbm backup                   # Start a full backup now (background)
+hbm backup <username>        # Backup a single cPanel account
+hbm restore <username>       # Restore latest backup of an account
+hbm restore <username> <date> # Restore from specific date
+```
+
+### Info
+```bash
+hbm logs             # Show last 50 log lines
+hbm logs live        # Follow log in real-time
+hbm list             # List available backups with sizes
+hbm disk             # Show disk usage on both servers
+```
+
+### Maintenance
+```bash
+hbm clean            # Remove stale temp folders
+hbm restart          # Restart Telegram bot
+```
 
 ## Telegram Bot Commands
 
@@ -55,15 +63,19 @@ The installer will:
 | `/users` | Show authorized users |
 | `/help` | Show all commands |
 
+## Features
+- Full cPanel account backups using pkgacct
+- Per-account transfer with immediate local delete (minimal disk usage)
+- Configurable backup retention (default: 3 copies)
+- Automatic cleanup of stale temp folders
+- Telegram bot for remote control and notifications
+- Multi-user Telegram support
+
 ## Requirements
 
 **cPanel Server (source):**
 - cPanel / WHM installed
-- Any cPanel-supported OS:
-  - AlmaLinux 8 / 9
-  - CloudLinux 8 / 9
-  - Rocky Linux 8 / 9
-  - Ubuntu 20.04 / 22.04
+- Any cPanel-supported OS (AlmaLinux, CloudLinux, Rocky Linux, Ubuntu)
 - root access
 - curl, rsync, python3
 
@@ -71,27 +83,22 @@ The installer will:
 - Any Linux distro
 - rsync installed
 - SSH access
-- Sufficient disk space (2x total accounts size recommended)
+- Sufficient disk space
 
 ## Changelog
 
+### v2.3.0
+- Unified `hbm` command replacing all separate hbm-* commands
+- `hbm logs live` for real-time log following
+- `hbm version` shows installed vs latest version
+
 ### v2.2.0
-- Added hbm-test: full diagnostics command
-- Added hbm-clean: remove stale temp folders
-- Added hbm-disk: disk usage on both servers
-- Added hbm-list: list available backups
-- Added hbm-backup-now: trigger backup in background
-- Added hbm-backup-account: backup single account
-- Added hbm-restore: copy backup file for WHM restore
-- Added hbm-config: interactive configuration editor
-- Fixed PATH refresh issue after installation
-- Improved uninstall to remove all commands
+- Added diagnostic, maintenance and restore commands
+- Fixed PATH refresh after installation
 
 ### v2.1.0
 - Per-account transfer with immediate local delete
-- Automatic stale temp folder cleanup
 - Multi-user Telegram support
-- Split long Telegram messages automatically
 
 ### v2.0.0
 - Initial release
