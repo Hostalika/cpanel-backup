@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+.env
+venv/
+
+# Logs
+*.log
+*.log.old
+
+# Keys
+keys/
+*.pem
+*.key
+
+# Database
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
