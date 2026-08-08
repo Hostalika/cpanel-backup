@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  hbm - Hostalika Backup Manager
-#  Version: 2.4.4
+#  Version: 2.4.5
 #  Usage: hbm <command> [options]
 # =============================================================================
 
@@ -75,8 +75,8 @@ cmd_status() {
     ver=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo "unknown")
     bot_status=$(systemctl is-active cpanel-backup-bot 2>/dev/null || echo "not installed")
     cron_line=$(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}' || echo "not set")
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
     keep=$(grep '^KEEP_BACKUPS=' "$SCRIPT" | cut -d'=' -f2)
     last_run=$(grep 'Backup Report' "$LOG_FILE" 2>/dev/null | tail -1 | awk '{print $1,$2}' || echo "never")
     last_status=$(grep 'Backup Report -' "$LOG_FILE" 2>/dev/null | tail -1 | grep -oP '(?<=- ).*' || echo "N/A")
@@ -135,36 +135,36 @@ cmd_config() {
     local v
     echo -e "\n${BLUE}Current Configuration:${NC}"
     echo "----------------------------------------"
-    grep -E "^REMOTE_HOST=|^REMOTE_USER=|^REMOTE_PORT=|^KEEP_BACKUPS=|^TELEGRAM_BOT_TOKEN=|^TELEGRAM_CHAT_IDS=" "$SCRIPT" | sed 's/.*="//;s/"//;s/^[^=]*=//'
+    grep -E "^REMOTE_HOST=|^REMOTE_USER=|^REMOTE_PORT=|^KEEP_BACKUPS=|^TELEGRAM_BOT_TOKEN=|^TELEGRAM_CHAT_IDS=" "$SCRIPT" | cut -d'=' -f2- | tr -d '"'
     echo "Cron: $(crontab -l 2>/dev/null | grep cpanel_backup | awk '{print $1,$2,$3,$4,$5}' || echo 'not set')"
     echo "----------------------------------------"
     echo -e "\n${YELLOW}Leave blank to keep current value${NC}\n"
 
-    read -p "  Backup server IP       [$(grep '^REMOTE_HOST=' $SCRIPT | sed 's/.*="//;s/"//g')]: " v
+    read -p "  Backup server IP       [$(grep '^REMOTE_HOST=' $SCRIPT | cut -d'=' -f2- | tr -d '"')]: " v
     if [ -n "$v" ]; then
         sed -i "s|^REMOTE_HOST=.*|REMOTE_HOST=\"${v}\"|" "$SCRIPT"
         sed -i "s|REMOTE_HOST   = .*|REMOTE_HOST   = \"${v}\"|" "$BOT"
     fi
 
-    read -p "  Backup server SSH user [$(grep '^REMOTE_USER=' $SCRIPT | sed 's/.*="//;s/"//g')]: " v
+    read -p "  Backup server SSH user [$(grep '^REMOTE_USER=' $SCRIPT | cut -d'=' -f2- | tr -d '"')]: " v
     if [ -n "$v" ]; then
         sed -i "s|^REMOTE_USER=.*|REMOTE_USER=\"${v}\"|" "$SCRIPT"
         sed -i "s|REMOTE_USER   = .*|REMOTE_USER   = \"${v}\"|" "$BOT"
     fi
 
-    read -p "  Backup server SSH port [$(grep '^REMOTE_PORT=' $SCRIPT | sed 's/.*="//;s/"//g')]: " v
+    read -p "  Backup server SSH port [$(grep '^REMOTE_PORT=' $SCRIPT | cut -d'=' -f2- | tr -d '"')]: " v
     [ -n "$v" ] && sed -i "s|^REMOTE_PORT=.*|REMOTE_PORT=\"${v}\"|" "$SCRIPT"
 
     read -p "  Keep N backups         [$(grep '^KEEP_BACKUPS=' $SCRIPT | cut -d'=' -f2)]: " v
     [ -n "$v" ] && sed -i "s|^KEEP_BACKUPS=.*|KEEP_BACKUPS=${v}|" "$SCRIPT"
 
-    read -p "  Telegram Bot Token     [$(grep '^TELEGRAM_BOT_TOKEN=' $SCRIPT | sed 's/.*="//;s/"//g')]: " v
+    read -p "  Telegram Bot Token     [$(grep '^TELEGRAM_BOT_TOKEN=' $SCRIPT | cut -d'=' -f2- | tr -d '"')]: " v
     if [ -n "$v" ]; then
         sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=\"${v}\"|" "$SCRIPT"
         sed -i "s|BOT_TOKEN     = .*|BOT_TOKEN     = \"${v}\"|" "$BOT"
     fi
 
-    read -p "  Telegram Chat ID(s)    [$(grep '^TELEGRAM_CHAT_IDS=' $SCRIPT | sed 's/.*="//;s/"//g')]: " v
+    read -p "  Telegram Chat ID(s)    [$(grep '^TELEGRAM_CHAT_IDS=' $SCRIPT | cut -d'=' -f2- | tr -d '"')]: " v
     [ -n "$v" ] && sed -i "s|^TELEGRAM_CHAT_IDS=.*|TELEGRAM_CHAT_IDS=\"${v}\"|" "$SCRIPT"
 
     ask_schedule
@@ -174,26 +174,26 @@ cmd_config() {
 
     echo -e "\n${BLUE}Testing SSH connection...${NC}"
     local rhost ruser rport skey
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
     if ssh -i "$skey" -p "$rport" -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
        -o BatchMode=yes "${ruser}@${rhost}" "echo ok" &>/dev/null; then
         echo -e "${GREEN}Connection successful!${NC}"
     else
         echo -e "${RED}Connection failed. Add this key to ${rhost}:${NC}"
-        cat "${skey}.pub"
+        cat "${skey}.pub" 2>/dev/null || echo "Key not found: ${skey}.pub"
     fi
 }
 
 cmd_test() {
     local rhost ruser rport skey bot_token free rdisk tg_ok
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    bot_token=$(grep '^TELEGRAM_BOT_TOKEN=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    bot_token=$(grep '^TELEGRAM_BOT_TOKEN=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
 
     echo -e "\n${BLUE}====== Hostalika Backup System - Diagnostics ======${NC}\n"
 
@@ -341,10 +341,10 @@ cmd_logs() {
 
 cmd_disk() {
     local rhost ruser rport skey
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
     echo "=== Local Server ==="
     df -h /backup
     echo ""
@@ -354,11 +354,11 @@ cmd_disk() {
 
 cmd_list() {
     local rhost ruser rport skey rdir
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
     echo "=== Available Backups on ${rhost} ==="
     ssh -i "$skey" -p "$rport" -o StrictHostKeyChecking=no "${ruser}@${rhost}" \
         "for d in \$(ls -dt ${rdir}/????-??-??_??-?? 2>/dev/null); do
@@ -398,11 +398,11 @@ cmd_backup() {
         echo "Backup started with PID: $!"
     else
         [ ! -d "/var/cpanel/users/${target}" ] && echo "Account not found: ${target}" && exit 1
-        rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-        ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-        rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-        skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
-        rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | sed 's/.*="//;s/"//')
+        rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+        ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+        rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+        skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+        rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
         date_str=$(date +"%Y-%m-%d_%H-%M")
         tmpdir="/backup/temp_cpanel/single-${date_str}"
         echo "Backing up account: ${target}"
@@ -430,11 +430,11 @@ cmd_restore() {
     local username rhost ruser rport skey rdir backup_path
     [ -z "$1" ] && { echo "Usage: hbm restore <username> [date]"; hbm list; exit 1; }
     username="$1"
-    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    skey=$(grep '^SSH_KEY=' "$SCRIPT" | sed 's/.*="//;s/"//')
-    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | sed 's/.*="//;s/"//')
+    rhost=$(grep '^REMOTE_HOST=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    ruser=$(grep '^REMOTE_USER=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rport=$(grep '^REMOTE_PORT=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    skey=$(grep '^SSH_KEY=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
+    rdir=$(grep '^REMOTE_DIR=' "$SCRIPT" | cut -d'=' -f2- | tr -d '"')
     if [ -n "$2" ]; then
         backup_path="${rdir}/${2}/cpmove-${username}.tar.gz"
     else
